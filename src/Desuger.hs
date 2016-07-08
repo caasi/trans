@@ -63,8 +63,15 @@ increase (D (info, ast)) = D (info + 1, ast)
 -- 另外我還得搞清楚 sequence 是否能幫我加起 List 中的 ast 們的 info ，如果不行，
 -- 是表示我該實作 Monoid 嗎？或是說 Int 是 Monoid ，所以不用煩惱這些？
 --
+-- 2016.07.07
+-- fmap :: (a -> b) -> f a -> f b
+-- fmap desugar :: f a -> f (m a)
+-- sequence . fmap desugar :: t a -> m (t a)
+-- mapM desugar :: t a -> m (t a)
+-- mapM :: (a -> m b) -> t a -> m (t b)
+--
 instance Desugarable Desugar (Alt l) where
-  desugar (Alt l pat rhs mBinds) = Alt l <$> desugar pat <*> desugar rhs <*> sequence $ fmap desugar mBinds
+  desugar (Alt l pat rhs mBinds) = Alt l <$> desugar pat <*> desugar rhs <*> mapM desugar mBinds
 
 instance Desugarable Desugar (FieldUpdate l) where
   desugar (FieldUpdate l qName exp) = FieldUpdate l <$> desugar qName <*> desugar exp
@@ -352,3 +359,103 @@ instance Desugarable Desugar (ConDecl l) where
   desugar (ConDecl l name tyList) = ConDecl l <$> desugar name <*> sequence $ fmap desugar tyList
   desugar (InfixConDecl l ty0 name ty1) = InfixConDecl l <$> desugar ty0 <*> desugar name <*> desugar ty1
   desugar (RecDecl l name fieldDeclList) = RecDecl l <$> desugar name <*> sequence $ fmap desugar fieldDeclList
+
+instance Desugarable Desugar (QualConDecl l) where
+  desugar (QualConDecl l mTyVarBindList mContext conDecl) = QualConDecl l <$> sequence $ fmap (sequence . fmap desugar) mTyVarBindList <*> sequence $ fmap desugar mContext <*> desugar conDecl
+
+instance Desugarable Desugar (Match l) where
+  desugar (Match l name patList rhs mBinds) = Match l <$> desugar name <*> sequence $ fmap desugar patList <*> desugar rhs <*> sequence $ fmap desugar mBinds
+  desugar (InfixMatch l pat name patList rhs mBinds) = InfixMatch l <$> desugar pat <*> desugar name <*> sequence $ fmap desugar patList <*> desugar rhs <*> sequence $ fmap desugar mBinds
+
+instance Desugarable Desugar (IPBind l) where
+  desugar (IPBind l ipName exp) = IPBind l <$> desugar ipName <*> desugar exp
+
+instance Desugarable Desugar (Binds l) where
+  desugar (BDecls l declList) = BDecls l <$> sequence $ fmap desugar declList
+  desugar (IPBinds l ipBindList) = IPBinds l <$> sequence $ fmap desugar ipBindList
+
+instance Desugarable Desugar (Deriving l) where
+  desugar (Deriving l instRuleList) = Deriving l <$> sequence $ fmap desugar instRuleList
+
+instance Desugarable Desugar (InstHead l) where
+  desugar (IHCon l qName) = IHCon l <$> desugar qName
+  desugar (IHInfix l ty qName) = IHInfix l <$> desugar ty <*> desugar qName
+  desugar (IHParen l instHead) = IHParen l <$> desugar instHead
+  desugar (IHApp l instHead ty) = IHApp l <$> desugar instHead <*> desugar ty
+
+instance Desugarable Desugar (InstRule l) where
+  desugar (IRule l mTyVarBindList mContext instHead) = IRule l <$> sequence $ fmap (sequence . fmap desugar) mTyVarBindList <*> sequence $ fmap desugar mContext <*> desugar instHead
+  desugar (IParen l instRule) = IParen l <$> desugar instRule
+
+instance Desugarable Desugar (DeclHead l) where
+  desugar (DHead l name) = DHead l <$> desugar name
+  desugar (DHInfix l tyVarBind name) = DHInfix l <$> desugar tyVarBind <*> desugar name
+  desugar (DHParen l declHead) = DHParen l <$> desugar declHead
+  desugar (DHApp l declHead tyVarBind) = DHApp l <$> desugar declHead <*> desugar tyVarBind
+
+instance Desugarable Desugar (DataOrNew l) where
+  desugar (DataType l) = pure $ DataType l
+  desugar (NewType l) = pure $ NewType l
+
+instance Desugarable Desugar (Role l) where
+  desugar (Nominal l) = pure $ Nominal l
+  desugar (Representational l) = pure $ Representational l
+  desugar (Phantom l) = pure $ Phantom l
+  desugar (RoleWildcard l) = pure $ RoleWildcard l
+
+instance Desugarable Desugar (BooleanFormula l) where
+  desugar (VarFormula l name) = VarFormula l <$> desugar name
+  desugar (AndFormula l booleanFormulaList) = AndFormula l <$> sequence $ fmap desugar booleanFormulaList
+  desugar (OrFormula l booleanFormulaList) = OrFormula l <$> sequence $ fmap desugar booleanFormulaList
+  desugar (ParenFormula l booleanFormula) = ParenFormula l <$> desugar booleanFormula
+
+instance Desugarable Desugar (Annotation l) where
+  desugar (Ann l name exp) = Ann l <$> desugar name <*> desugar exp
+  desugar (TypeAnn l name exp) = TypeAnn l <$> desugar name <*> desugar exp
+  desugar (ModuleAnn l exp) = ModuleAnn l <$> desugar exp
+
+instance Desugarable Desugar (TypeEqn l) where
+  desugar (TypeEqn l ty0 ty1) = TypeEqn l <$> desugar ty0 <*> desugar ty1
+
+-- map-Pair-first
+mapP :: (a -> m a) -> (a, b) -> m (a, b)
+mapP f (a, b) =
+  let
+    (info, a') = getDesugar $ f a
+  in
+    D (info, (a', b))
+
+instance Desugarable Desugar (Decl l) where
+  desugar (TypeDecl l declHead ty) = TypeDecl l <$> desugar declHead <*> desugar ty
+  desugar (TypeFamDecl l declHead mKind) = TypeFamDecl l <$> desugar declHead <*> mapM desugar mKind
+  desugar (ClosedTypeFamDecl l declHead mKind tyEqnList) = ClosedTypeFamDecl l <$> desugar declHead <*> mapM desugar mKind <*> mapM desugar tyEqnList
+  desugar (DataDecl l dataOrNew mContext declHead qualConDeclList mDeriving) = DataDecl l <$> desugar dataOrNew <*> mapM desugar mContext <*> desugar declHead <*> mapM desugar qualConDeclList <*> desugar mDeriving
+  desugar (GDataDecl l dataOrNew mContext declHead mKind gadtDeclList mDeriving) = GDataDecl l <$> desugar dataOrNew <*> mapM desugar mContext <*> desugar declHead <*> mapM desugar mKind <*> mapM desugar gadtDeclList <*> mapM desugar mDeriving
+  desugar (DataFamDecl l mContext declHead mKind) = DataFamDecl l <$> mapM desugar mContext <*> desugar declHead <*> mapM desugar mKind
+  desugar (TypeInsDecl l ty0 ty1) = TypeInsDecl l <$> desugar ty0 <*> desugar ty1
+  desugar (DataInsDecl l dataOrNew ty qualConDeclList mDeriving) = DataInsDecl l <$> desugar dataOrNew <*> desugar ty <*> mapM desugar qualConDeclList <*> mapM desugar mDeriving
+  desugar (GDataInsDecl l dataOrNew ty mKind gadtDeclList mDeriving) = GDataInsDecl l <$> desugar dataOrNew <*> desugar ty <*> mapM desugar mKind <*> mapM desugar gadtDeclList <*> mapM desugar mDeriving
+  desugar (ClassDecl l mContext declHead funDepList mClassDeclList) = ClassDecl l <$> mapM desugar mContext <*> desugar declHead <*> mapM desugar funDepList <*> (mapM . mapM) desugar mClassDeclList
+  desugar (InstDecl l mOverlap instRule mInstDeclList) = InstDecl l <$> mapM desugar mOverlap <*> desugar instRule <*> (mapM . mapM) desugar mInstDeclList
+  desugar (DerivDecl l mOverlap instRule) = DerivDecl l <$> mapM desugar mOverlap <*> desugar instRule
+  desugar (InfixDecl l assoc mInt opList) = InfixDecl l <$> desugar assoc <*> pure mInt <*> mapM desugar opList
+  desugar (DefaultDecl l tyList) = DefaultDecl l <$> mapM desuagr tyList
+  desugar (SpliceDecl l exp) = SpliceDecl l <$> desugar exp
+  desugar (TypeSig l nameList ty) = TypeSig l <$> mapM desugar nameList <*> desugar ty
+  desugar (PatSynSig l name mTyVarBindList mContext0 mContext1 ty) = PatSynSig l <$> desugar name <*> (mapM . mapM) desugar mTyVarBindList <*> mapM desugar mContext0 <*> mapM desugar mContext1 <*> desugar ty
+  desugar (FunBind l matchList) = FunBind l <$> mapM desugar matchList
+  desugar (PatBind l pat rhs mBinds) = PatBind l <$> desugar pat <*> desugar rhs <*> mapM desugar mBinds
+  desugar (PatSyn l pat0 pat1 patternSynDirection) = PatSyn l <$> desugar pat0 <*> desguar pat1 <*> desugar patternSynDirection
+  desugar (ForImp l callConv mSafety mString name ty) = ForImp l <$> desugar callConv <*> mapM desugar mSafety <*> pure mString <*> desugar name <*> desugar ty
+  desugar (ForExp l callConv mString name ty) = ForExp l <$> desugar callConv <*> pure mString <*> desugar name <*> desugar ty
+  desugar (RulePragmaDecl l ruleList) = RulePragmaDecl l <$> mapM desugar ruleList
+  desugar (DeprPragmaDecl l nameListStringPairList) = DeprPragmaDecl l <$> (mapM . mapP . mapM) desugar nameListStringPairList
+  desuagr (WarnPragmaDecl l nameListStringPairList) = WarnPragmaDecl l <$> (mapM . mapP . mapM) desugar nameListStringPairList
+  desugar (InlineSig l bool mActivation qName) = InlineSig l <$> pure bool <*> mapM desugar mActivation <*> desugar qName
+  desuagr (InlineConlikeSig l mActivation qName) = InlineConlikeSig l <$> mapM desugar mActivation <*> desugar qName
+  desugar (SpecSig l mActivation qName tyList) = SpecSig l <$> mapM desugar mActivation <*> desugar qName <*> mapM desugar tyList
+  desugar (SpecInlineSig l bool mActivation qName tyList) = SpecInlineSig l <$> pure bool <*> mapM desugar mActivation <*> desugar qName <*> mapM desugar tyList
+  desugar (InstSig l instRule) = InstSig l <$> desugar instRule
+  desugar (AnnPragma l annotation) = AnnPragma l <$> desugar annotation
+  desugar (MinimalPragma l mBooleanFormula) = MinimalPragma l <$> mapM desugar mBooleanFormula
+  desugar (RoleAnnotDecl l qName roleList) = RoleAnnotDecl l <$> desugar qName <*> mapM desugar roleList
