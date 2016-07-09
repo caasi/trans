@@ -459,3 +459,78 @@ instance Desugarable Desugar (Decl l) where
   desugar (AnnPragma l annotation) = AnnPragma l <$> desugar annotation
   desugar (MinimalPragma l mBooleanFormula) = MinimalPragma l <$> mapM desugar mBooleanFormula
   desugar (RoleAnnotDecl l qName roleList) = RoleAnnotDecl l <$> desugar qName <*> mapM desugar roleList
+
+instance Desugarable Desugar (Assoc l) where
+  desugar (AssocNone l) = pure $ AssocNone l
+  desugar (AssocLeft l) = pure $ AssocLeft l
+  desugar (AssocRight l) = pure $ AssocRight l
+
+instance Desugarable Desugar (ImportSpec l) where
+  desugar (IVar l name) = IVar l <$> desugar name
+  desugar (IAbs l namespace name) = IAbs l <$> desugar namespace <*> desugar name
+  desugar (IThingAll l name) = IThingAll l <$> desugar name
+  desugar (IThingWith l name cNameList) = IThingWith l <$> desguar name <*> mapM desugar cNameList
+
+instance Desugarable Desugar (ImportSpecList l) where
+  desugar (ImportSpecList l bool importSpecList) = ImportSpecList l <$> pure bool <*> mapM desugar importSpecList
+
+instance Desugarable Desugar (Namespace l) where
+  desugar (NoNamespace l) = pure $ NoNamespace l
+  desugar (TypeNamespace l) = pure $ TypeNamespace l
+  desugar (PatternNamespace l) = pure $ PatternNamespace l
+
+instance Desugarable Desugar (ExportSpec l) where
+  desugar (EVar l qName) = EVar l <$> desugar qName
+  desugar (EAbs l namespace qName) = EAbs l <$> desugar namespace <*> desugar qName
+  desugar (EThingAll l qName) = EThingAll l <$> desugar qName
+  desugar (EThingWith l qName cNameList) = EThingWith l <$> desugar qName <*> mapM desugar cNameList
+  desugar (EModuleContents l moduleName) = EModuleContents l <$> desugar moduleName
+
+instance Desugarable Desugar (ExportSpecList l) where
+  desugar (ExportSpecList l exportSpecList) = ExportSpecList l <$> mapM desugar exportSpecList
+
+instance Desugarable Desugar (ModuleHead l) where
+  desugar (ModuleHead l moduleName mWarningText mExportSpecList) = ModuleHead l <$> desugar moduleName <*> mapM desugar mWarningText <*> mapM desugar mExportSpecList
+
+instance Desugarable Desugar (Module l) where
+  desugar (Module l mModuleHead modulePragmaList importDeclList declList) = Module l <$> mapM desugar mModuleHead <*> mapM desugar modulePragmaList <*> mapM desugar importDeclList <*> mapM desugar declList
+  desugar (XmlPage l moduleName modulePragmaList xName xAttrList mExp expList) = XmlPage l <$> desugar moduleName <*> mapM desugar modulePragmaList <*> desugar xName <*> mapM desugar xAttrList <*> mapM desugar mExp <*> mapM desugar expList
+  desugar (XmlHybrid l mModuleHead modulePragmaList importDeclList declList xName xAttrList mExp expList) = XmlHybrid l <$> mapM desugar mModuleHead <*> mapM desugar modulePragmaList <*> mapM desugar importDeclList <*> mapM desugar declList <*> desuar xName <*> mapM desugar xAttrList <*> mapM desugar mExp <*> mapM desugar expList
+
+instance Desugarable Desugar (CName l) where
+  desugar (VarName l name) = VarName l <$> desugar name
+  desugar (ConName l name) = ConName l <$> desugar name
+
+instance Desugarable Desugar (Op l) where
+  desugar (VarOp l name) = VarOp l <$> desugar name
+  desugar (ConOp l name) = ConOp l <$> desugar name
+
+instance Desugarable Desugar (QOp l) where
+  desugar (QVarOp l name) = QVarOp l <$> desugar name
+  desugar (QConOp l name) = QConOp l <$> desugar name
+
+instance Desugarable Desugar (IPName l) where
+  desugar (IPDup l str) = IPDup l <$> pure str
+  desuagr (IPLin l str) = IPLin l <$> pure str
+
+instance Desugarable Desugar (Name l) where
+  desugar (Ident l str) = Ident l <$> pure str
+  desugar (Symbol l str) = Symbol l <$> pure str
+
+instance Desugarable Desugar (QName l) where
+  desugar (Qual l moduleName name) = Qual l <$> desugar moduleName <*> desugar name
+  desugar (UnQual l name) = UnQual l <$> desugar name
+  desugar (Special l specialCon) = Special l <$> desugar specialCon
+
+instance Desugarable Desugar (SpecialCon l) where
+  desugar (UnitCon l) = pure $ UnitCon l
+  desugar (ListCon l) = pure $ ListCon l
+  desugar (FunCon l) = pure $ FunCon l
+  desugar (TupleCon l boxed int) = TupleCon l <$> desugar boxed <*> pure int
+  desugar (Cons l) = pure $ Cons l
+  desugar (UnboxedSingleCon l) = pure $ UnboxedSingleCon l
+
+instance Desugarable Desugar (ModuleName l) where
+  desugar (ModuleName l str) = Module l <$> pure str
+
+-- what is (=~=)?
