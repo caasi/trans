@@ -52,8 +52,8 @@ class (Applicative m) => Desugarable m a where
 -- > 我覺得主要是為了後面串其他東西的方便，
 -- > 實際上兩者能表達的應該是等價的
 --
-increase :: Desugar a -> Desugar a
-increase (D (info, ast)) = D (info + 1, ast)
+increase :: Int -> a -> Desugar a
+increase i = \ast -> D (i, ast)
 
 -- can I just?
 --
@@ -206,58 +206,58 @@ instance Desugarable Desugar (XName l) where
   desugar (XDomName l str0 str1) = XDomName l <$> pure str0 <*> pure str1
 
 instance Desugarable Desugar (Exp l) where
-  desugar (Var l qName) = increase (Var l <$> desugar qName)
-  desugar (IPVar l ipName) = increase (IPVar l <$> desugar ipName)
-  desugar (Con l qName) = increase (Con l <$> desugar qName)
-  desugar (Lit l literal) = increase (Lit l <$> desugar literal)
-  desugar (InfixApp l exp0 qOp exp1) = increase (InfixApp l <$> desugar exp0 <*> desugar qOp <*> desugar exp1)
-  desugar (App l exp0 exp1) = increase (App l <$> desugar exp0 <*> desugar exp1)
-  desugar (NegApp l exp) = increase (NegApp l <$> desugar exp)
-  desugar (Lambda l patList exp) = increase (Lambda l <$> mapM desugar patList <*> desugar exp)
-  desugar (Let l binds exp) = increase (Let l <$> desugar binds <*> desugar exp)
-  desugar (If l exp0 exp1 exp2) = increase (If l <$> desugar exp0 <*> desugar exp1 <*> desugar exp2)
-  desugar (MultiIf l guardedRhsList) = increase (MultiIf l <$> mapM desugar guardedRhsList)
-  desugar (Case l exp altList) = increase (Case l <$> desugar exp <*> mapM desugar altList)
-  desugar (Do l stmtList) = increase (Do l <$> mapM desugar stmtList)
-  desugar (MDo l stmtList) = increase (MDo l <$> mapM desugar stmtList)
-  desugar (Tuple l boxed expList) = increase (Tuple l <$> pure boxed <*> mapM desugar expList)
-  desugar (TupleSection l boxed mExpList) = increase (TupleSection l <$> pure boxed <*> (mapM . mapM) desugar mExpList)
-  desugar (List l expList) = increase (List l <$> mapM desugar expList)
-  desugar (ParArray l expList) = increase (List l <$> mapM desugar expList)
-  desugar (Paren l exp) = increase (Paren l <$> desugar exp)
-  desugar (LeftSection l exp qOp) = increase (LeftSection l <$> desugar exp <*> desugar qOp)
-  desugar (RightSection l qOp exp) = increase (RightSection l <$> desugar qOp <*> desugar exp)
-  desugar (RecConstr l qName fieldUpdateList) = increase (RecConstr l <$> desugar qName <*> mapM desugar fieldUpdateList)
-  desugar (RecUpdate l exp fieldUpdateList) = increase (RecUpdate l <$> desugar exp <*> mapM desugar fieldUpdateList)
-  desugar (EnumFrom l exp) = increase (EnumFrom l <$> desugar exp)
-  desugar (EnumFromTo l exp0 exp1) = increase (EnumFromTo l <$> desugar exp0 <*> desugar exp1)
-  desugar (EnumFromThen l exp0 exp1) = increase (EnumFromThen l <$> desugar exp0 <*> desugar exp1)
-  desugar (EnumFromThenTo l exp0 exp1 exp2) = increase (EnumFromThenTo l <$> desugar exp0 <*> desugar exp1 <*> desugar exp2)
-  desugar (ParArrayFromTo l exp0 exp1) = increase (ParArrayFromTo l <$> desugar exp0 <*> desugar exp1)
-  desugar (ParArrayFromThenTo l exp0 exp1 exp2) = increase (ParArrayFromThenTo l <$> desugar exp0 <*> desugar exp1 <*> desugar exp2)
-  desugar (ListComp l exp qualStmtList) = increase (ListComp l <$> desugar exp <*> mapM desugar qualStmtList)
-  desugar (ParComp l exp qualStmtListList) = increase (ParComp l <$> desugar exp <*> mapM (sequence . fmap desugar) qualStmtListList)
-  desugar (ExpTypeSig l exp ty) = increase (ExpTypeSig l <$> desugar exp <*> desugar ty)
-  desugar (VarQuote l qName) = increase (VarQuote l <$> desugar qName)
-  desugar (TypQuote l qName) = increase (TypQuote l <$> desugar qName)
-  desugar (BracketExp l bracket) = increase (BracketExp l <$> desugar bracket)
-  desugar (SpliceExp l splice) = increase (SpliceExp l <$> desugar splice)
-  desugar (QuasiQuote l str0 str1) = increase (QuasiQuote l <$> pure str0 <*> pure str1)
-  desugar (XTag l xName xAttrList mExp expList) = increase (XTag l <$> desugar xName <*> mapM desugar xAttrList <*> mapM desugar mExp <*> mapM desugar expList)
-  desugar (XETag l xName xAttrList mExp) = increase (XETag l <$> desugar xName <*> mapM desugar xAttrList <*> mapM desugar mExp)
-  desugar (XPcdata l str) = increase (XPcdata l <$> pure str)
-  desugar (XExpTag l exp) = increase (XExpTag l <$> desugar exp)
-  desugar (XChildTag l expList) = increase (XChildTag l <$> mapM desugar expList)
-  desugar (CorePragma l str exp) = increase (CorePragma l <$> pure str <*> desugar exp)
-  desugar (SCCPragma l str exp) = increase (SCCPragma l <$> pure str <*> desugar exp)
-  desugar (GenPragma l str pair0 pair1 exp) = increase (GenPragma l <$> pure str <*> pure pair0 <*> pure pair1 <*> desugar exp)
-  desugar (Proc l pat exp) = increase (Proc l <$> desugar pat <*> desugar exp)
-  desugar (LeftArrApp l exp0 exp1) = increase (LeftArrApp l <$> desugar exp0 <*> desugar exp1)
-  desugar (RightArrApp l exp0 exp1) = increase (RightArrApp l <$> desugar exp0 <*> desugar exp1)
-  desugar (LeftArrHighApp l exp0 exp1) = increase (LeftArrHighApp l <$> desugar exp0 <*> desugar exp1)
-  desugar (RightArrHighApp l exp0 exp1) = increase (RightArrHighApp l <$> desugar exp0 <*> desugar exp1)
-  desugar (LCase l altList) = increase (LCase l <$> mapM desugar altList)
-  desugar (ExprHole l) = increase (pure $ ExprHole l)
+  desugar (Var l qName) = Var l <$> desugar qName >>= increase 1
+  desugar (IPVar l ipName) = IPVar l <$> desugar ipName >>= increase 1
+  desugar (Con l qName) = Con l <$> desugar qName >>= increase 1
+  desugar (Lit l literal) = Lit l <$> desugar literal >>= increase 1
+  desugar (InfixApp l exp0 qOp exp1) = InfixApp l <$> desugar exp0 <*> desugar qOp <*> desugar exp1 >>= increase 1
+  desugar (App l exp0 exp1) = App l <$> desugar exp0 <*> desugar exp1 >>= increase 1
+  desugar (NegApp l exp) = NegApp l <$> desugar exp >>= increase 1
+  desugar (Lambda l patList exp) = Lambda l <$> mapM desugar patList <*> desugar exp >>= increase 1
+  desugar (Let l binds exp) = Let l <$> desugar binds <*> desugar exp >>= increase 1
+  desugar (If l exp0 exp1 exp2) = If l <$> desugar exp0 <*> desugar exp1 <*> desugar exp2 >>= increase 1
+  desugar (MultiIf l guardedRhsList) = MultiIf l <$> mapM desugar guardedRhsList >>= increase 1
+  desugar (Case l exp altList) = Case l <$> desugar exp <*> mapM desugar altList >>= increase 1
+  desugar (Do l stmtList) = Do l <$> mapM desugar stmtList >>= increase 1
+  desugar (MDo l stmtList) = MDo l <$> mapM desugar stmtList >>= increase 1
+  desugar (Tuple l boxed expList) = Tuple l <$> pure boxed <*> mapM desugar expList >>= increase 1
+  desugar (TupleSection l boxed mExpList) = TupleSection l <$> pure boxed <*> (mapM . mapM) desugar mExpList >>= increase 1
+  desugar (List l expList) = List l <$> mapM desugar expList >>= increase 1
+  desugar (ParArray l expList) = List l <$> mapM desugar expList >>= increase 1
+  desugar (Paren l exp) = Paren l <$> desugar exp >>= increase 1
+  desugar (LeftSection l exp qOp) = LeftSection l <$> desugar exp <*> desugar qOp >>= increase 1
+  desugar (RightSection l qOp exp) = RightSection l <$> desugar qOp <*> desugar exp >>= increase 1
+  desugar (RecConstr l qName fieldUpdateList) = RecConstr l <$> desugar qName <*> mapM desugar fieldUpdateList >>= increase 1
+  desugar (RecUpdate l exp fieldUpdateList) = RecUpdate l <$> desugar exp <*> mapM desugar fieldUpdateList >>= increase 1
+  desugar (EnumFrom l exp) = EnumFrom l <$> desugar exp >>= increase 1
+  desugar (EnumFromTo l exp0 exp1) = EnumFromTo l <$> desugar exp0 <*> desugar exp1 >>= increase 1
+  desugar (EnumFromThen l exp0 exp1) = EnumFromThen l <$> desugar exp0 <*> desugar exp1 >>= increase 1
+  desugar (EnumFromThenTo l exp0 exp1 exp2) = EnumFromThenTo l <$> desugar exp0 <*> desugar exp1 <*> desugar exp2 >>= increase 1
+  desugar (ParArrayFromTo l exp0 exp1) = ParArrayFromTo l <$> desugar exp0 <*> desugar exp1 >>= increase 1
+  desugar (ParArrayFromThenTo l exp0 exp1 exp2) = ParArrayFromThenTo l <$> desugar exp0 <*> desugar exp1 <*> desugar exp2 >>= increase 1
+  desugar (ListComp l exp qualStmtList) = ListComp l <$> desugar exp <*> mapM desugar qualStmtList >>= increase 1
+  desugar (ParComp l exp qualStmtListList) = ParComp l <$> desugar exp <*> mapM (sequence . fmap desugar) qualStmtListList >>= increase 1
+  desugar (ExpTypeSig l exp ty) = ExpTypeSig l <$> desugar exp <*> desugar ty >>= increase 1
+  desugar (VarQuote l qName) = VarQuote l <$> desugar qName >>= increase 1
+  desugar (TypQuote l qName) = TypQuote l <$> desugar qName >>= increase 1
+  desugar (BracketExp l bracket) = BracketExp l <$> desugar bracket >>= increase 1
+  desugar (SpliceExp l splice) = SpliceExp l <$> desugar splice >>= increase 1
+  desugar (QuasiQuote l str0 str1) = QuasiQuote l <$> pure str0 <*> pure str1 >>= increase 1
+  desugar (XTag l xName xAttrList mExp expList) = XTag l <$> desugar xName <*> mapM desugar xAttrList <*> mapM desugar mExp <*> mapM desugar expList >>= increase 1
+  desugar (XETag l xName xAttrList mExp) = XETag l <$> desugar xName <*> mapM desugar xAttrList <*> mapM desugar mExp >>= increase 1
+  desugar (XPcdata l str) = XPcdata l <$> pure str >>= increase 1
+  desugar (XExpTag l exp) = XExpTag l <$> desugar exp >>= increase 1
+  desugar (XChildTag l expList) = XChildTag l <$> mapM desugar expList >>= increase 1
+  desugar (CorePragma l str exp) = CorePragma l <$> pure str <*> desugar exp >>= increase 1
+  desugar (SCCPragma l str exp) = SCCPragma l <$> pure str <*> desugar exp >>= increase 1
+  desugar (GenPragma l str pair0 pair1 exp) = GenPragma l <$> pure str <*> pure pair0 <*> pure pair1 <*> desugar exp >>= increase 1
+  desugar (Proc l pat exp) = Proc l <$> desugar pat <*> desugar exp >>= increase 1
+  desugar (LeftArrApp l exp0 exp1) = LeftArrApp l <$> desugar exp0 <*> desugar exp1 >>= increase 1
+  desugar (RightArrApp l exp0 exp1) = RightArrApp l <$> desugar exp0 <*> desugar exp1 >>= increase 1
+  desugar (LeftArrHighApp l exp0 exp1) = LeftArrHighApp l <$> desugar exp0 <*> desugar exp1 >>= increase 1
+  desugar (RightArrHighApp l exp0 exp1) = RightArrHighApp l <$> desugar exp0 <*> desugar exp1 >>= increase 1
+  desugar (LCase l altList) = LCase l <$> mapM desugar altList >>= increase 1
+  desugar (ExprHole l) = (pure $ ExprHole l) >>= increase 1
 
 instance Desugarable Desugar (Sign l) where
   desugar (Signless l) = pure $ Signless l
