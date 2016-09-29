@@ -4,6 +4,9 @@ import Debug.Trace
 import System.Environment
 import System.FilePath
 import Language.Haskell.Exts.Annotated
+import Codec.Archive.Zip
+import Data.Char
+import Data.ByteString.Lazy as B hiding (map, length, getContents, putStrLn)
 import qualified Data.Map.Strict as M
 import Control.Monad
 
@@ -17,15 +20,30 @@ toModPath str basePath = basePath ++ [pathSeparator] ++ map go str where
   go '.' = pathSeparator
   go c = c
 
+-- should I use `ExceptT String IO (Module SrcSpanInfo)`?
 readModule :: ParseMode -> String -> String -> IO (Maybe (Module SrcSpanInfo))
 readModule parseMode modName basePath = do
   let filename = toModPath modName basePath ++ (extSeparator : "hs")
   let newParseMode = parseMode { parseFilename = filename }
-  content <- readFile filename
+  content <- Prelude.readFile filename
   let res = parseModuleWithMode newParseMode content
   return $ case res of
     ParseOk mod -> Just mod
-    ParseFailed _ msg -> Nothing
+    ParseFailed _ msg -> trace msg Nothing
+
+readModuleFromZip :: ParseMode -> String -> String -> String -> IO (Maybe (Module SrcSpanInfo))
+readModuleFromZip parseMode modName basePath zipPath = do
+  let filename = toModPath modName basePath ++ (extSeparator : "hs")
+  let newParseMode = parseMode { parseFilename = filename }
+  let zipname = basePath ++ [pathSeparator] ++ zipPath ++ (extSeparator : "zip")
+  archive <- fmap toArchive $ B.readFile zipname
+  return $ case findEntryByPath filename archive of
+    Nothing -> trace ("module not found: " ++ filename ++ "@" ++ zipname) Nothing
+    Just entry -> do
+      let res = parseModuleWithMode newParseMode $ map (chr . fromIntegral) $ B.unpack $ fromEntry entry
+      case res of
+        ParseOk mod -> Just mod
+        ParseFailed _ msg -> trace msg Nothing
 
 collectModule :: ParseMode -> IO (M.Map String (Module SrcSpanInfo)) -> Module SrcSpanInfo -> String -> IO (M.Map String (Module SrcSpanInfo))
 collectModule parseMode ioMap mod basePath =
@@ -46,11 +64,18 @@ collectModule parseMode ioMap mod basePath =
             let (ModuleName _ name) = importModule m
             case name of
               "Prelude" -> acc
-              _ -> do
-                mMod <- readModule parseMode name basePath
-                case mMod of
-                  Just mm -> collectModule parseMode acc mm basePath
-                  Nothing -> acc
+              _ ->
+                case importPkg m of
+                  Nothing -> do
+                    mMod <- readModule parseMode name basePath
+                    case mMod of
+                      Just mm -> collectModule parseMode acc mm basePath
+                      Nothing -> acc
+                  Just zipPath -> do
+                    mMod <- readModuleFromZip parseMode name basePath zipPath
+                    case mMod of
+                      Just mm -> collectModule parseMode acc mm basePath
+                      Nothing -> acc
       go (return map'') imports
     _ -> ioMap
 
@@ -68,6 +93,9 @@ myParseMode filename = ParseMode
   , ignoreFunctionArity = True
   }
 
+cleanupModule :: Module a -> Module ()
+cleanupModule = fmap $ const ()
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -83,5 +111,5 @@ main = do
   allMods <- case res of
     ParseOk mod -> collectModule parseMode (return M.empty) mod basePath
     ParseFailed _ msg -> return (trace msg M.empty)
-  let cleanMods = (fmap . fmap) (const ()) allMods
+  let cleanMods = fmap cleanupModule allMods
   putStrLn $ show $ (fmap desugar cleanMods :: M.Map String (Desugar (Module ())))
