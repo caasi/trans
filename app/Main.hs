@@ -1,5 +1,6 @@
 module Main where
 
+import Debug.Trace
 import System.Environment
 import System.FilePath
 import Language.Haskell.Exts.Annotated
@@ -16,16 +17,18 @@ toModPath str basePath = basePath ++ [pathSeparator] ++ map go str where
   go '.' = pathSeparator
   go c = c
 
-readModule :: String -> String -> IO (Maybe (Module SrcSpanInfo))
-readModule modName basePath = do
-  content <- readFile $ toModPath modName basePath ++ (extSeparator : "hs")
-  let res = parseModule content
+readModule :: ParseMode -> String -> String -> IO (Maybe (Module SrcSpanInfo))
+readModule parseMode modName basePath = do
+  let filename = toModPath modName basePath ++ (extSeparator : "hs")
+  let newParseMode = parseMode { parseFilename = filename }
+  content <- readFile filename
+  let res = parseModuleWithMode newParseMode content
   return $ case res of
     ParseOk mod -> Just mod
     ParseFailed _ msg -> Nothing
 
-collectModule :: IO (M.Map String (Module SrcSpanInfo)) -> Module SrcSpanInfo -> String -> IO (M.Map String (Module SrcSpanInfo))
-collectModule ioMap mod basePath =
+collectModule :: ParseMode -> IO (M.Map String (Module SrcSpanInfo)) -> Module SrcSpanInfo -> String -> IO (M.Map String (Module SrcSpanInfo))
+collectModule parseMode ioMap mod basePath =
   case mod of
     Module _ mModuleHead _ imports _ -> do
       let
@@ -44,12 +47,26 @@ collectModule ioMap mod basePath =
             case name of
               "Prelude" -> acc
               _ -> do
-                mMod <- readModule name basePath
+                mMod <- readModule parseMode name basePath
                 case mMod of
-                  Just mm -> collectModule acc mm basePath
+                  Just mm -> collectModule parseMode acc mm basePath
                   Nothing -> acc
       go (return map'') imports
     _ -> ioMap
+
+
+
+myParseMode filename = ParseMode
+  { parseFilename = filename
+  , baseLanguage = Haskell2010
+  , extensions = map EnableExtension
+    [ PackageImports
+    ]
+  , ignoreLanguagePragmas = True
+  , ignoreLinePragmas = False
+  , fixities = Just preludeFixities
+  , ignoreFunctionArity = True
+  }
 
 main :: IO ()
 main = do
@@ -61,9 +78,10 @@ main = do
       _ -> args
     [basePath, packageName] = argsWithDefaults
   inputStr <- getContents
-  let res = parseModule inputStr
+  let parseMode = myParseMode inputStr
+  let res = parseModuleWithMode parseMode inputStr
   allMods <- case res of
-    ParseOk mod -> collectModule (return M.empty) mod basePath
-    ParseFailed _ msg -> return M.empty
+    ParseOk mod -> collectModule parseMode (return M.empty) mod basePath
+    ParseFailed _ msg -> return (trace msg M.empty)
   let cleanMods = (fmap . fmap) (const ()) allMods
   putStrLn $ show $ (fmap desugar cleanMods :: M.Map String (Desugar (Module ())))
