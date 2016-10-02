@@ -3,7 +3,7 @@ module Main where
 import Debug.Trace
 import System.Environment
 import System.FilePath
-import Language.Haskell.Exts.Annotated
+import Language.Haskell.Exts
 import Codec.Archive.Zip
 import Data.Char
 import Data.ByteString.Lazy as B hiding (map, length, getContents, putStrLn)

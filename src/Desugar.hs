@@ -6,7 +6,7 @@ module Desugar
 
 import Control.Applicative
 import Data.Traversable
-import Language.Haskell.Exts.Annotated.Syntax
+import Language.Haskell.Exts.Syntax
 
 
 
@@ -328,7 +328,7 @@ instance Desugarable Desugar (Type l) where
   desugar (TyPromoted l ty) = TyPromoted l <$> desugar ty
   desugar (TyEquals l ty0 ty1) = TyEquals l <$> desugar ty0 <*> desugar ty1
   desugar (TySplice l splice) = TySplice l <$> desugar splice
-  desugar (TyBang l bangTy ty) = TyBang l <$> desugar bangTy <*> desugar ty
+  desugar (TyBang l bangTy unpackedness ty) = TyBang l <$> desugar bangTy <*> desugar unpackedness <*> desugar ty
   desugar (TyWildCard l mName) = TyWildCard l <$> mapM desugar mName
 
 instance Desugarable Desugar (GuardedRhs l) where
@@ -340,7 +340,13 @@ instance Desugarable Desugar (Rhs l) where
 
 instance Desugarable Desugar (BangType l) where
   desugar (BangedTy l) = pure $ BangedTy l
-  desugar (UnpackedTy l) = pure $ UnpackedTy l
+  desugar (LazyTy l) = pure $ LazyTy l
+  desugar (NoStrictAnnot l) = pure $ NoStrictAnnot l
+
+instance Desugarable Desugar (Unpackedness l) where
+  desugar (Unpack l) = pure $ Unpack l
+  desugar (NoUnpack l) = pure $ NoUnpack l
+  desugar (NoUnpackPragma l) = pure $ NoUnpackPragma l
 
 instance Desugarable Desugar (InstDecl l) where
   desugar (InsDecl l decl) = InsDecl l <$> desugar decl
@@ -351,8 +357,8 @@ instance Desugarable Desugar (InstDecl l) where
 instance Desugarable Desugar (ClassDecl l) where
   desugar (ClsDecl l decl) = ClsDecl l <$> desugar decl
   desugar (ClsDataFam l mContext declHead mKind) = ClsDataFam l <$> mapM desugar mContext <*> desugar declHead <*> mapM desugar mKind
-  desugar (ClsTyFam l declHead mKind) = ClsTyFam l <$> desugar declHead <*> mapM desugar mKind
-  desugar (ClsTyDef l ty0 ty1) = ClsTyDef l <$> desugar ty0 <*> desugar ty1
+  desugar (ClsTyFam l declHead mResultSig mInjectivityInfo) = ClsTyFam l <$> desugar declHead <*> mapM desugar mResultSig <*> mapM desugar mInjectivityInfo
+  desugar (ClsTyDef l tyEqn) = ClsTyDef l <$> desugar tyEqn
   desugar (ClsDefSig l name ty) = ClsDefSig l <$> desugar name <*> desugar ty
 
 instance Desugarable Desugar (GadtDecl l) where
@@ -433,8 +439,8 @@ mapP f (a, b) =
 
 instance Desugarable Desugar (Decl l) where
   desugar (TypeDecl l declHead ty) = TypeDecl l <$> desugar declHead <*> desugar ty
-  desugar (TypeFamDecl l declHead mKind) = TypeFamDecl l <$> desugar declHead <*> mapM desugar mKind
-  desugar (ClosedTypeFamDecl l declHead mKind tyEqnList) = ClosedTypeFamDecl l <$> desugar declHead <*> mapM desugar mKind <*> mapM desugar tyEqnList
+  desugar (TypeFamDecl l declHead mResultSig mInjectivityInfo) = TypeFamDecl l <$> desugar declHead <*> mapM desugar mResultSig <*> mapM desugar mInjectivityInfo
+  desugar (ClosedTypeFamDecl l declHead mResultSig mInjectivityInfo tyEqnList) = ClosedTypeFamDecl l <$> desugar declHead <*> mapM desugar mResultSig <*> mapM desugar mInjectivityInfo <*> mapM desugar tyEqnList
   desugar (DataDecl l dataOrNew mContext declHead qualConDeclList mDeriving) = DataDecl l <$> desugar dataOrNew <*> mapM desugar mContext <*> desugar declHead <*> mapM desugar qualConDeclList <*> mapM desugar mDeriving
   desugar (GDataDecl l dataOrNew mContext declHead mKind gadtDeclList mDeriving) = GDataDecl l <$> desugar dataOrNew <*> mapM desugar mContext <*> desugar declHead <*> mapM desugar mKind <*> mapM desugar gadtDeclList <*> mapM desugar mDeriving
   desugar (DataFamDecl l mContext declHead mKind) = DataFamDecl l <$> mapM desugar mContext <*> desugar declHead <*> mapM desugar mKind
@@ -488,14 +494,16 @@ instance Desugarable Desugar (Namespace l) where
 instance Desugarable Desugar (ExportSpec l) where
   desugar (EVar l qName) = EVar l <$> desugar qName
   desugar (EAbs l namespace qName) = EAbs l <$> desugar namespace <*> desugar qName
-  desugar (EThingAll l qName) = EThingAll l <$> desugar qName
-  desugar (EThingWith l qName cNameList) = EThingWith l <$> desugar qName <*> mapM desugar cNameList
+  desugar (EThingWith l eWildcard qName cNameList) = EThingWith l <$> desugar eWildcard <*> desugar qName <*> mapM desugar cNameList
   desugar (EModuleContents l moduleName) = EModuleContents l <$> desugar moduleName
 
 instance Desugarable Desugar (ExportSpecList l) where
   desugar (ExportSpecList l exportSpecList) = ExportSpecList l <$> mapM desugar exportSpecList
 
--- missing from the Annotated list
+instance Desugarable Desugar (EWildcard l) where
+  desugar (NoWildcard l) = pure $ NoWildcard l
+  desugar (EWildcard l int) = EWildcard l <$> pure int
+
 instance Desugarable Desugar (ImportDecl l) where
   desugar (ImportDecl l moduleName bool0 bool1 bool2 mStr mModuleName mImportSpecList) = ImportDecl l <$> desugar moduleName <*> pure bool0 <*> pure bool1 <*> pure bool2 <*> mapM pure mStr <*> mapM desugar mModuleName <*> mapM desugar mImportSpecList
 
@@ -547,5 +555,12 @@ instance Desugarable Desugar (PatternSynDirection l) where
   desugar (Unidirectional) = pure Unidirectional
   desugar (ImplicitBidirectional) = pure ImplicitBidirectional
   desugar (ExplicitBidirectional l declList) = ExplicitBidirectional l <$> mapM desugar declList
+
+instance Desugarable Desugar (InjectivityInfo l) where
+  desugar (InjectivityInfo l name nameList) = InjectivityInfo l <$> desugar name <*> mapM desugar nameList
+
+instance Desugarable Desugar (ResultSig l) where
+  desugar (KindSig l kind) = KindSig l <$> desugar kind
+  desugar (TyVarSig l tyVarBind) = TyVarSig l <$> desugar tyVarBind
 
 -- what is (=~=)?
