@@ -5,6 +5,7 @@ import System.Environment
 import System.FilePath
 import Language.Haskell.Exts
 import Codec.Archive.Zip
+import Data.List.Utils
 import Data.Char
 import Data.ByteString.Lazy as B hiding (map, length, getContents, putStrLn)
 import qualified Data.Map.Strict as M
@@ -15,15 +16,13 @@ import Desugar
 
 
 
-toModPath :: String -> String -> String
-toModPath str basePath = basePath ++ [pathSeparator] ++ map go str where
-  go '.' = pathSeparator
-  go c = c
+toModPath :: String -> String
+toModPath = replace "." [pathSeparator]
 
 -- should I use `ExceptT String IO (Module SrcSpanInfo)`?
 readModule :: ParseMode -> String -> String -> IO (Maybe (Module SrcSpanInfo))
 readModule parseMode modName basePath = do
-  let filename = toModPath modName basePath ++ (extSeparator : "hs")
+  let filename = basePath </> toModPath modName <.> "hs"
   let newParseMode = parseMode { parseFilename = filename }
   content <- Prelude.readFile filename
   let res = parseModuleWithMode newParseMode content
@@ -33,9 +32,9 @@ readModule parseMode modName basePath = do
 
 readModuleFromZip :: ParseMode -> String -> String -> String -> IO (Maybe (Module SrcSpanInfo))
 readModuleFromZip parseMode modName basePath zipPath = do
-  let filename = toModPath modName basePath ++ (extSeparator : "hs")
+  let filename = toModPath modName <.> "hs"
   let newParseMode = parseMode { parseFilename = filename }
-  let zipname = basePath ++ [pathSeparator] ++ zipPath ++ (extSeparator : "zip")
+  let zipname = basePath </> zipPath <.> "zip"
   archive <- fmap toArchive $ B.readFile zipname
   return $ case findEntryByPath filename archive of
     Nothing -> trace ("module not found: " ++ filename ++ "@" ++ zipname) Nothing
@@ -98,18 +97,13 @@ cleanupModule = fmap $ const ()
 
 main :: IO ()
 main = do
-  args <- getArgs
-  let
-    argsWithDefaults = case length args of
-      0 -> args ++ ["", ""]
-      1 -> args ++ [""]
-      _ -> args
-    [basePath, packageName] = argsWithDefaults
-  inputStr <- getContents
-  let parseMode = myParseMode inputStr
-  let res = parseModuleWithMode parseMode inputStr
+  filePath:_ <- getArgs
+  let basePath = takeDirectory filePath
+  let fileName = takeBaseName filePath
+  let parseMode = myParseMode filePath
+  res <- readModule parseMode fileName basePath
   allMods <- case res of
-    ParseOk mod -> collectModule parseMode (return M.empty) mod basePath
-    ParseFailed _ msg -> return (trace msg M.empty)
+    Just mod -> collectModule parseMode (return M.empty) mod basePath
+    Nothing  -> return M.empty
   let cleanMods = fmap cleanupModule allMods
   putStrLn $ show $ (fmap desugar cleanMods :: M.Map String (Desugar (Module ())))

@@ -29,6 +29,7 @@ executable trans
   build-depends:       base
                      , containers
                      , bytestring
+                     , MissingH
                      , trans
                      , filepath
                      , haskell-src-exts >= 1.18 && < 1.19
