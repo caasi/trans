@@ -19,30 +19,32 @@ import Desugar
 toModPath :: String -> String
 toModPath = replace "." [pathSeparator]
 
--- should I use `ExceptT String IO (Module SrcSpanInfo)`?
-readModule :: ParseMode -> String -> String -> IO (Maybe (Module SrcSpanInfo))
+readModule :: ParseMode -> String -> String -> IO (ParseResult (Module SrcSpanInfo))
 readModule parseMode modName basePath = do
   let filename = basePath </> toModPath modName <.> "hs"
   let newParseMode = parseMode { parseFilename = filename }
   content <- Prelude.readFile filename
-  let res = parseModuleWithMode newParseMode content
-  return $ case res of
-    ParseOk mod -> Just mod
-    ParseFailed _ msg -> trace msg Nothing
+  return $ parseModuleWithMode newParseMode content
 
-readModuleFromZip :: ParseMode -> String -> String -> String -> IO (Maybe (Module SrcSpanInfo))
+readModuleFromZip :: ParseMode -> String -> String -> String -> IO (ParseResult (Module SrcSpanInfo))
 readModuleFromZip parseMode modName basePath zipPath = do
   let filename = toModPath modName <.> "hs"
   let newParseMode = parseMode { parseFilename = filename }
   let zipname = basePath </> zipPath <.> "zip"
   archive <- fmap toArchive $ B.readFile zipname
   return $ case findEntryByPath filename archive of
-    Nothing -> trace ("module not found: " ++ filename ++ "@" ++ zipname) Nothing
-    Just entry -> do
-      let res = parseModuleWithMode newParseMode $ map (chr . fromIntegral) $ B.unpack $ fromEntry entry
-      case res of
-        ParseOk mod -> Just mod
-        ParseFailed _ msg -> trace msg Nothing
+    Nothing ->
+      ParseFailed
+        SrcLoc
+          { srcFilename = filename
+          , srcLine = 0
+          , srcColumn = 0
+          }
+        ("module not found: " ++ filename ++ "@" ++ zipname)
+    Just entry ->
+      parseModuleWithMode newParseMode (bsToString . fromEntry $ entry)
+      where
+        bsToString = map (chr . fromIntegral) . B.unpack
 
 collectModule :: ParseMode -> IO (M.Map String (Module SrcSpanInfo)) -> Module SrcSpanInfo -> String -> IO (M.Map String (Module SrcSpanInfo))
 collectModule parseMode ioMap mod basePath =
@@ -68,13 +70,13 @@ collectModule parseMode ioMap mod basePath =
                   Nothing -> do
                     mMod <- readModule parseMode name basePath
                     case mMod of
-                      Just mm -> collectModule parseMode acc mm basePath
-                      Nothing -> acc
+                      ParseOk mm -> collectModule parseMode acc mm basePath
+                      ParseFailed _ msg -> trace msg acc
                   Just zipPath -> do
                     mMod <- readModuleFromZip parseMode name basePath zipPath
                     case mMod of
-                      Just mm -> collectModule parseMode acc mm basePath
-                      Nothing -> acc
+                      ParseOk mm -> collectModule parseMode acc mm basePath
+                      ParseFailed _ msg -> trace msg acc
       go (return map'') imports
     _ -> ioMap
 
@@ -92,9 +94,6 @@ myParseMode filename = ParseMode
   , ignoreFunctionArity = True
   }
 
-cleanupModule :: Module a -> Module ()
-cleanupModule = fmap $ const ()
-
 main :: IO ()
 main = do
   filePath:_ <- getArgs
@@ -103,7 +102,8 @@ main = do
   let parseMode = myParseMode filePath
   res <- readModule parseMode fileName basePath
   allMods <- case res of
-    Just mod -> collectModule parseMode (return M.empty) mod basePath
-    Nothing  -> return M.empty
+    ParseOk mod        -> collectModule parseMode (return M.empty) mod basePath
+    ParseFailed _ msg  -> return (trace msg M.empty)
+  let cleanupModule = fmap $ const ()
   let cleanMods = fmap cleanupModule allMods
   putStrLn $ show $ (fmap desugar cleanMods :: M.Map String (Desugar (Module ())))
